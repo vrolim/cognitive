@@ -137,6 +137,14 @@ def f17(post):
     post = nlp(post)
     return np.std([len(dic.inserted(word.lower_).split('-')) for word in post])
 
+#number os first person singular words
+def f18(post):
+    pp = ['eu','me','mim','comigo']
+    words = word_tokenize(post)
+    count = 0
+    print(words)
+    return sum([words.count(word) for word in pp])
+
 #abre planilhas
 corpus = open_workbook('DBForumBrazilteste.xlsx',on_demand=True)
 
@@ -144,12 +152,14 @@ corpus = open_workbook('DBForumBrazilteste.xlsx',on_demand=True)
 planilha1 = corpus.sheet_by_name("Sheet1")
 
 #armazenando postagens em uma lista (posts) coluna G, linhas de 1 a 8
-posts = planilha1.col_slice(colx=6,start_rowx=0,end_rowx=8)
-ids = planilha1.col_slice(colx=0,start_rowx=0,end_rowx=8)
-parentIds = planilha1.col_slice(colx=6,start_rowx=0,end_rowx=8)
+posts = planilha1.col_slice(colx=6,start_rowx=1,end_rowx=8)
+ids = planilha1.col_slice(colx=0,start_rowx=1,end_rowx=8)
+parentIds = planilha1.col_slice(colx=1,start_rowx=1,end_rowx=8)
+ids = [int(id.value) for id in ids]
+parentIds = [int(id.value) for id in parentIds]
 
 for i in range(0,len(posts)):
     post = posts[i].value
-
+    
     #exemple
     print(f1(post))
