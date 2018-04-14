@@ -3,7 +3,44 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import string
 import spacy
+import pyphen
+import numpy as np
+
 nlp = spacy.load('pt')
+
+class Node:
+    def __init__(self,post,parent):
+        self.post = post
+        self.parent = parent
+        self.depth = 0
+
+class Tree:
+    def __init__(self,postIds, parentIds):
+        self.ids = postIds
+        self.parents = parentIds
+        self.nodes = []
+
+        for i in range(len(self.ids)):
+            nd = self.nodeExists(i)
+            node = Node(self.ids[i],self.parents[i])
+            self.nodes.append(node)           
+
+    def nodeExists(self,id):
+        for node in self.nodes:
+            if(id==node.post):
+                return node
+        return False
+
+    def depth(self,id,node=False):
+        nd = self.nodeExists(id)
+        if(nd.parent!=0):
+            if(node):
+                node.depth+=1
+                self.depth(nd.parent,node)
+            else:
+                nd.depth+=1
+                self.depth(nd.parent,nd)
+        return nd.depth
 
 #count words
 def f1(post):
@@ -20,8 +57,8 @@ def f3(post):
     return len(set([word.lower_ for word in post if not word.is_punct]))/len(post)
 
 #post depth
-def f4(post):
-    return 0
+def f4(postId):
+    return tree.depth(postId)
 
 #LD content word (without stopwords)
 def f5(post):
@@ -29,8 +66,10 @@ def f5(post):
     return len(set([word.lower_ for word in post if not word.is_stop and word.lower_ not in stopwords.words('portuguese')]))/len(post)    
 
 #average giveness
-def f6(post):
-    return 0
+def f6(post,parent):
+    post = nlp(post)
+    parent = nlp(parent)
+    return post.similarity(parent)
 
 #question marks
 def f7(post):
@@ -118,7 +157,17 @@ def f14(post):
 
 #avg lsa similarity sentences
 def f15(post):
-    return 0
+    post = nlp(post)
+    sents = [sent for sent in post.sents]
+    if(len(sents)<=1):
+        return 0
+    similarities = []   
+    for sent in sents:
+        for sent2 in sents:
+            if not(sent==sent2):
+                similarities.append(sent.similarity(sent2))
+        sents.remove(sent)
+    return np.mean(similarities)
 
 #avg sentence length
 def f16(post):
@@ -131,8 +180,6 @@ def f16(post):
 
 #standard desviation of word syllables count
 def f17(post):
-    import pyphen
-    import numpy as np
     dic = pyphen.Pyphen(lang='pt-br')
     post = nlp(post)
     return np.std([len(dic.inserted(word.lower_).split('-')) for word in post])
@@ -145,21 +192,40 @@ def f18(post):
     print(words)
     return sum([words.count(word) for word in pp])
 
-#abre planilhas
+#Flesch-Kincaid Grade Level
+def f19(post):
+    dic = pyphen.Pyphen(lang='pt-br')
+    meanWordsSentence = f16(post)
+    numWords = f1(post)
+    post = nlp(post)
+    meanSyllabe = np.sum([len(dic.inserted(word.lower_).split('-')) for word in post])
+    return 248.835-(1.015*meanWordsSentence)-(84.6*(meanSyllabe/numWords))
+
+#average of word's hypernonims
+def f20(post):
+    post = nlp(post)
+    verbs = [word for word in post if word.pos_=="VERB"]
+    sinonims = [verb for verb in verbs]
+    return len(sinonims)/len(verbs)
+
+#dataset reader
 corpus = open_workbook('DBForumBrazilteste.xlsx',on_demand=True)
 
-# acessa a planilha Planilha1
-planilha1 = corpus.sheet_by_name("Sheet1")
+sheet = corpus.sheet_by_name("Sheet1")
 
 #armazenando postagens em uma lista (posts) coluna G, linhas de 1 a 8
-posts = planilha1.col_slice(colx=6,start_rowx=1,end_rowx=8)
-ids = planilha1.col_slice(colx=0,start_rowx=1,end_rowx=8)
-parentIds = planilha1.col_slice(colx=1,start_rowx=1,end_rowx=8)
+posts = sheet.col_slice(colx=6,start_rowx=1,end_rowx=8)
+ids = sheet.col_slice(colx=0,start_rowx=1,end_rowx=8)
+parentIds = sheet.col_slice(colx=1,start_rowx=1,end_rowx=8)
 ids = [int(id.value) for id in ids]
 parentIds = [int(id.value) for id in parentIds]
+
+tree = Tree(ids,parentIds)
 
 for i in range(0,len(posts)):
     post = posts[i].value
     
-    #exemple
-    print(f1(post))
+    #example
+    # print(f15(post))
+    # print(f16(post))
+    # print(f19(post))
