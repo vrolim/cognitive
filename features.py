@@ -5,7 +5,6 @@ import string
 import spacy
 import pyphen
 import numpy as np
-from sklearn import svm, cross_validation
 from sklearn.metrics import classification_report
 from sklearn.cross_validation import train_test_split
 #from sklearn.model_selection import train_test_split
@@ -14,6 +13,27 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 import matplotlib.pyplot as plt
 
 nlp = spacy.load('pt')
+
+wn = open('layout-one.txt','r',encoding='utf-8',errors='ignore').read().split('\n')
+wordnet = []
+for line in wn:
+    line = line.replace('[','').replace(']','').replace('{','').replace('}','').replace(',','').split(' ')[1::]
+    if(line!=[]):
+        category = line[0]
+        words = line[1::]
+        for w in words:
+            if('<' in w):
+                words.remove(w)
+        wordnet.append(words)
+
+def num_synonyms(word):
+    count = 0
+    if(type(word)!=str):
+        return 0
+    for wordSet in wordnet:
+        if(wordSet.__contains__(word)):
+            count+=len(wordSet)-1
+    return count 
 
 class Node:
     def __init__(self,post,parent):
@@ -94,8 +114,8 @@ def f8(post, previous):
 
 #LD - VOC
 def f9(post):
-    post = nlp(post)
-    return 0
+    # post = nlp(post)
+    return f5(post)
 
 #money-related words
 def f10(post):
@@ -184,12 +204,14 @@ def f19(post):
 def f20(post):
     post = nlp(post)
     verbs = [word for word in post if word.pos_=="VERB"]
-    sinonims = [verb for verb in verbs]
-    return len(sinonims)/len(verbs)
+    if(len(verbs)==0):
+        return 0
+    synonyms = [num_synonyms(verb.lower_) for verb in verbs]
+    return sum(synonyms)/len(verbs)
 
 #aditional features
 def aditionals(post):
-    postOriginal = post
+    postOriginal = post.lower()
     post = nlp(post)
 
     above6 = len([word for word in post if len(word)>6])
@@ -199,30 +221,21 @@ def aditionals(post):
     sps = sum([word_tokenize(postOriginal).count(word) for word in ['tu','te','ti','contigo']])
     tps = sum([word_tokenize(postOriginal).count(word) for word in ['ele','ela','se','si','consigo','lhe']])
     tpp = sum([word_tokenize(postOriginal).count(word) for word in ['eles','elas','se','si','consigo','lhes']])
-    pi = sum([word_tokenize(postOriginal).count(word) for word in ['algum','nenhum','todo','muito','pouco','vário','tanto','outro','quanto','alguma','nenhuma','toda','muita','pouca','vária','tanta','outra','quanta','alguns','nenhuns','todos','muitos','poucos','vários','tantos','outros','quantos','algumas','nenhumas','todas','muitas','poucas','várias','tantas','outras','quantas','alguém','ninguém','outrem','tudo','nada','algo','cada','qualquer','quaisquer']])
+    ipronouns = sum([word_tokenize(postOriginal).count(word) for word in ['algum','nenhum','todo','muito','pouco','vário','tanto','outro','quanto','alguma','nenhuma','toda','muita','pouca','vária','tanta','outra','quanta','alguns','nenhuns','todos','muitos','poucos','vários','tantos','outros','quantos','algumas','nenhumas','todas','muitas','poucas','várias','tantas','outras','quantas','alguém','ninguém','outrem','tudo','nada','algo','cada','qualquer','quaisquer']])
     articles = len([word for word in post if word.pos_== 'DET' and 'art' in word.tag_.lower()])    
     verbs = len([word for word in post if word.pos_== 'VERB'])
+    pastTense = len([word for word in post if word.pos_== 'VERB' and 'ps' in word.tag_.lower()])
+    presentTense = len([word for word in post if word.pos_== 'VERB' and 'pr' in word.tag_.lower()])
+    futureTense = len([word for word in post if word.pos_== 'VERB' and 'fut' in word.tag_.lower()])
     adverbs = len([word for word in post if word.pos_== 'ADV'])
     prepositions = len([word for word in post if word.pos_== 'ADP' and 'prp' in word.tag_.lower()]) 
+    conjs = len([word for word in post if word.pos_== 'CONJ' or word.pos_== 'CCONJ' or word.pos_=='SCONJ'])
+    negs = sum([word_tokenize(postOriginal).count(word) for word in ['não', 'tampouco', 'nem', 'nunca', 'jamais']])
+    quants = len([word for word in post if 'quant' in word.tag_.lower()])
+    nums = len([word for word in post if word.pos_== 'NUM'])
 
-def train(classifier, X, y, class_names):
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-   
-    ##TREINANDO ALGORITMO"
-    classifier.fit(X_train, y_train)
-    
-    ##Predicoes para medição da Acurácia"
-    y_pred = classifier.fit(X_train, y_train).predict(X_test)
-    cnf_matrix = confusion_matrix(y_test, y_pred)
-    np.set_printoptions(precision=2)
-    print("Accuracy: %s" % classifier.score(X_test,y_test))
-    print("F-measure: %s" % str(f1_score(y_test, y_pred, average=None )))
-    print("Recall: %s"% str(recall_score(y_test, y_pred, average=None)))
-    print("Precision: %s" % str(precision_score(y_test, y_pred, average=None)))
-    plt.figure()
-    plot_confusion_matrix(cnf_matrix, classes=class_names, title='Matriz de Confusao')
-    plt.show()
-    return classifier
+    return [above6,pronouns,ppronouns,fpp,sps,tps,tpp,ipronouns,articles,verbs,pastTense,presentTense,futureTense,adverbs,prepositions,conjs,negs,quants,nums]
+
 
 #dataset reader
 corpus = open_workbook('DBForumBrazil-Final.xlsx',on_demand=True)
@@ -238,12 +251,65 @@ labels = sheet.col_slice(colx=7,start_rowx=1,end_rowx=1501)
 posts = [str(post.value) for post in posts]
 ids = [int(id.value) for id in ids]
 parentIds = [int(id.value) for id in parentIds]
-y = [int(label.value) for label in labels]
+labels = [int(label.value) for label in labels]
 postDict = {ids[i]:posts[i] for i in range(len(posts))}
 
 tree = Tree(ids,parentIds)
 
-x = []
+output = open('cognitive.arff','w')
+output.write('''% 1. Title: Cognitive Presence
+% 
+% 2. Sources:
+%      (a) Creators: Valter Neto, Vitor Rolim, Rafael Mello, Vitomir Kovanovic, Dragan Gasevic, Rafael Dueire and Rodrigo Lins 
+%      (b) Date: April, 2018
+% 
+@RELATION Cognitive Presence
+
+@ATTRIBUTE f1 NUMERIC
+@ATTRIBUTE f2 NUMERIC
+@ATTRIBUTE f3 NUMERIC
+@ATTRIBUTE f4 NUMERIC
+@ATTRIBUTE f5 NUMERIC
+@ATTRIBUTE f6 NUMERIC
+@ATTRIBUTE f7 NUMERIC
+@ATTRIBUTE f8 NUMERIC
+@ATTRIBUTE f9 NUMERIC
+@ATTRIBUTE f10 NUMERIC
+@ATTRIBUTE f11 NUMERIC
+@ATTRIBUTE f12 NUMERIC
+@ATTRIBUTE f13 NUMERIC
+@ATTRIBUTE f14 NUMERIC
+@ATTRIBUTE f15 NUMERIC
+@ATTRIBUTE f16 NUMERIC
+@ATTRIBUTE f17 NUMERIC
+@ATTRIBUTE f18 NUMERIC
+@ATTRIBUTE f19 NUMERIC
+@ATTRIBUTE f20 NUMERIC
+@ATTRIBUTE fa1 NUMERIC
+@ATTRIBUTE fa2 NUMERIC
+@ATTRIBUTE fa3 NUMERIC
+@ATTRIBUTE fa4 NUMERIC
+@ATTRIBUTE fa5 NUMERIC
+@ATTRIBUTE fa6 NUMERIC
+@ATTRIBUTE fa7 NUMERIC
+@ATTRIBUTE fa8 NUMERIC
+@ATTRIBUTE fa9 NUMERIC
+@ATTRIBUTE fa10 NUMERIC
+@ATTRIBUTE fa11 NUMERIC
+@ATTRIBUTE fa12 NUMERIC
+@ATTRIBUTE fa13 NUMERIC
+@ATTRIBUTE fa14 NUMERIC
+@ATTRIBUTE fa15 NUMERIC
+@ATTRIBUTE fa16 NUMERIC
+@ATTRIBUTE fa17 NUMERIC
+@ATTRIBUTE fa18 NUMERIC
+@ATTRIBUTE fa19 NUMERIC   
+
+@ATTRIBUTE class {0,1,2,3,4}
+
+@DATA
+''')
+
 for i in range(len(posts)):
     print(i)
     post = posts[i]
@@ -253,29 +319,36 @@ for i in range(len(posts)):
         parent = postDict[parentIds[i]]
     except:
         parent = post
-    p1 = f1(post)
-    p2 = f2(post)
-    p3 = f3(post)
-    p4 = f4(ids[i])
-    p5 = f5(post)
-    p6 = f6(post,parent)
-    p7 = f7(post)
-    p8 = f8(post,posts[previous])
-    p9 = f9(post)
-    p10 = f10(post)
-    p11 = f11(post)
-    p12 = f12(post,posts[posterior])
-    p13 = f13(i,parentIds)
-    p14 = f14(post)
-    p15 = f15(post)
-    p16 = f16(post)
-    p17 = f17(post)
-    p18 = f18(post)
-    p19 = f19(post)
-    # p20 = f20(post)
-    # padd = aditionals(post)
-    x.append([float(p1),float(p2),float(p3),float(p4),float(p5),float(p6),float(p7),float(p8),float(p9),float(p10),float(p11),float(p12),float(p13),float(p14),float(p15),float(p16),float(p17),float(p18),float(p19)])    
-import pickle
-pickle.dump(x,open("train.pickle", "wb"))
+    p1 = round(float(f1(post)),3)
+    p2 = round(float(f2(post)),3)
+    p3 = round(float(f3(post)),3)
+    p4 = round(float(f4(ids[i])),3)
+    p5 = round(float(f5(post)),3)
+    p6 = round(float(f6(post,parent)),3)
+    p7 = round(float(f7(post)),3)
+    p8 = round(float(f8(post,posts[previous])),3)
+    p9 = round(float(f9(post)),3)
+    p10 = round(float(f10(post)),3)
+    p11 = round(float(f11(post)),3)
+    p12 = round(float(f12(post,posts[posterior])),3)
+    p13 = round(float(f13(i,parentIds)),3)
+    p14 = round(float(f14(post)),3)
+    p15 = round(float(f15(post)),3)
+    p16 = round(float(f16(post)),3)
+    p17 = round(float(f17(post)),3)
+    p18 = round(float(f18(post)),3)
+    p19 = round(float(f19(post)),3)
+    p20 = round(float(f20(post)),3)
+    padd = aditionals(post)
+    features = [p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14,p15,p16,p17,p18,p19,p20]+padd+[labels[i]]
+    features = str(features).replace('[','').replace(']','')
+    #writing arff file
+    output.write(features)
+    output.write("\n")
 
-train(svm.SVC(kernel='linear',C=1.0),x,y,[0,1,2,3,4])
+output.close()
+
+
+
+# import pickle
+# pickle.dump(x,open("train.pickle", "wb"))
