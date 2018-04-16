@@ -5,6 +5,13 @@ import string
 import spacy
 import pyphen
 import numpy as np
+from sklearn import svm, cross_validation
+from sklearn.metrics import classification_report
+from sklearn.cross_validation import train_test_split
+#from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import precision_score, recall_score, f1_score
+import matplotlib.pyplot as plt
 
 nlp = spacy.load('pt')
 
@@ -67,6 +74,8 @@ def f5(post):
 
 #average giveness
 def f6(post,parent):
+    if(post==parent):
+        return 0
     post = nlp(post)
     parent = nlp(parent)
     return post.similarity(parent)
@@ -77,6 +86,8 @@ def f7(post):
 
 #similarity with previous message
 def f8(post, previous):
+    if(post==previous):
+        return 0
     post = nlp(post)
     previous = nlp(previous)
     return post.similarity(previous)
@@ -89,40 +100,7 @@ def f9(post):
 #money-related words
 def f10(post):
     money = [
-        "bill",
-        "capital",
-        "cash",
-        "check",
-        "fund",
-        "pay",
-        "payment",
-        "property",
-        "salary",
-        "wage",
-        "wealth",
-        "banknote",
-        "bankroll",
-        "bread",
-        "bucks",
-        "chips",
-        "coin",
-        "coinage",
-        "dough",
-        "finances",
-        "funds",
-        "gold",
-        "gravy",
-        "greenback",
-        "loot",
-        "pesos",
-        "resources",
-        "riches",
-        "roll",
-        "silver",
-        "specie",
-        "treasure",
-        "wad",
-        "wherewithal",
+    'dinheiro', 'tostão', 'ouro', 'vintém', 'prata', 'nota', 'moeda', 'níquel', 'metal', 'cobre', 'cédula', 'soma', 'numo', 'pecúnia', 'montante', 'importância', 'numerário', 'quantia', 'verba', 'trocado', 'bufunfa', 'bago', 'tutu', 'arame', 'bagarote', 'bolada', 'capim', 'grana',
     ]
     post = nlp(post)
     count = 0
@@ -142,6 +120,8 @@ def f11(post):
 
 #similarity with posterior message
 def f12(post, posterior):
+    if(post==posterior):
+        return 0
     post = nlp(post)
     posterior = nlp(posterior)
     return post.similarity(posterior)
@@ -189,7 +169,6 @@ def f18(post):
     pp = ['eu','me','mim','comigo']
     words = word_tokenize(post)
     count = 0
-    print(words)
     return sum([words.count(word) for word in pp])
 
 #Flesch-Kincaid Grade Level
@@ -208,24 +187,95 @@ def f20(post):
     sinonims = [verb for verb in verbs]
     return len(sinonims)/len(verbs)
 
+#aditional features
+def aditionals(post):
+    postOriginal = post
+    post = nlp(post)
+
+    above6 = len([word for word in post if len(word)>6])
+    pronouns = len([word for word in post if word.pos_=='PROP' or word.pos_=='PROPN'])
+    ppronouns = len([word for word in post if word.pos_== 'PROPN'])
+    fpp = sum([word_tokenize(postOriginal).count(word) for word in ['nós','nos','conosco']])
+    sps = sum([word_tokenize(postOriginal).count(word) for word in ['tu','te','ti','contigo']])
+    tps = sum([word_tokenize(postOriginal).count(word) for word in ['ele','ela','se','si','consigo','lhe']])
+    tpp = sum([word_tokenize(postOriginal).count(word) for word in ['eles','elas','se','si','consigo','lhes']])
+    pi = sum([word_tokenize(postOriginal).count(word) for word in ['algum','nenhum','todo','muito','pouco','vário','tanto','outro','quanto','alguma','nenhuma','toda','muita','pouca','vária','tanta','outra','quanta','alguns','nenhuns','todos','muitos','poucos','vários','tantos','outros','quantos','algumas','nenhumas','todas','muitas','poucas','várias','tantas','outras','quantas','alguém','ninguém','outrem','tudo','nada','algo','cada','qualquer','quaisquer']])
+    articles = len([word for word in post if word.pos_== 'DET' and 'art' in word.tag_.lower()])    
+    verbs = len([word for word in post if word.pos_== 'VERB'])
+    adverbs = len([word for word in post if word.pos_== 'ADV'])
+    prepositions = len([word for word in post if word.pos_== 'ADP' and 'prp' in word.tag_.lower()]) 
+
+def train(classifier, X, y, class_names):
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+   
+    ##TREINANDO ALGORITMO"
+    classifier.fit(X_train, y_train)
+    
+    ##Predicoes para medição da Acurácia"
+    y_pred = classifier.fit(X_train, y_train).predict(X_test)
+    cnf_matrix = confusion_matrix(y_test, y_pred)
+    np.set_printoptions(precision=2)
+    print("Accuracy: %s" % classifier.score(X_test,y_test))
+    print("F-measure: %s" % str(f1_score(y_test, y_pred, average=None )))
+    print("Recall: %s"% str(recall_score(y_test, y_pred, average=None)))
+    print("Precision: %s" % str(precision_score(y_test, y_pred, average=None)))
+    plt.figure()
+    plot_confusion_matrix(cnf_matrix, classes=class_names, title='Matriz de Confusao')
+    plt.show()
+    return classifier
+
 #dataset reader
-corpus = open_workbook('DBForumBrazilteste.xlsx',on_demand=True)
+corpus = open_workbook('DBForumBrazil-Final.xlsx',on_demand=True)
 
 sheet = corpus.sheet_by_name("Sheet1")
 
-#armazenando postagens em uma lista (posts) coluna G, linhas de 1 a 8
-posts = sheet.col_slice(colx=6,start_rowx=1,end_rowx=8)
-ids = sheet.col_slice(colx=0,start_rowx=1,end_rowx=8)
-parentIds = sheet.col_slice(colx=1,start_rowx=1,end_rowx=8)
+posts = sheet.col_slice(colx=6,start_rowx=1,end_rowx=1501)
+ids = sheet.col_slice(colx=0,start_rowx=1,end_rowx=1501)
+parentIds = sheet.col_slice(colx=1,start_rowx=1,end_rowx=1501)
+labels = sheet.col_slice(colx=7,start_rowx=1,end_rowx=1501)
+
+#converting in list format
+posts = [str(post.value) for post in posts]
 ids = [int(id.value) for id in ids]
 parentIds = [int(id.value) for id in parentIds]
+y = [int(label.value) for label in labels]
+postDict = {ids[i]:posts[i] for i in range(len(posts))}
 
 tree = Tree(ids,parentIds)
 
-for i in range(0,len(posts)):
-    post = posts[i].value
-    
-    #example
-    # print(f15(post))
-    # print(f16(post))
-    # print(f19(post))
+x = []
+for i in range(len(posts)):
+    print(i)
+    post = posts[i]
+    previous = i if i-1<0 else i-1
+    posterior = i if i+1>len(posts)-1 else i+1
+    try:
+        parent = postDict[parentIds[i]]
+    except:
+        parent = post
+    p1 = f1(post)
+    p2 = f2(post)
+    p3 = f3(post)
+    p4 = f4(ids[i])
+    p5 = f5(post)
+    p6 = f6(post,parent)
+    p7 = f7(post)
+    p8 = f8(post,posts[previous])
+    p9 = f9(post)
+    p10 = f10(post)
+    p11 = f11(post)
+    p12 = f12(post,posts[posterior])
+    p13 = f13(i,parentIds)
+    p14 = f14(post)
+    p15 = f15(post)
+    p16 = f16(post)
+    p17 = f17(post)
+    p18 = f18(post)
+    p19 = f19(post)
+    # p20 = f20(post)
+    # padd = aditionals(post)
+    x.append([float(p1),float(p2),float(p3),float(p4),float(p5),float(p6),float(p7),float(p8),float(p9),float(p10),float(p11),float(p12),float(p13),float(p14),float(p15),float(p16),float(p17),float(p18),float(p19)])    
+import pickle
+pickle.dump(x,open("train.pickle", "wb"))
+
+train(svm.SVC(kernel='linear',C=1.0),x,y,[0,1,2,3,4])
